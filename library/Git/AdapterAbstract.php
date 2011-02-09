@@ -2,12 +2,10 @@
 
 namespace Git;
 
-class AdapterAbstract
+abstract class AdapterAbstract
     extends \FilesystemIterator
 {
     protected $_options = array();
-
-    abstract public function __construct($options);
 
     public function setConfig(Zend_Config $options)
     {

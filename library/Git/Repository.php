@@ -6,13 +6,9 @@ use Git\Adapter;
 
 class Repository
 {
-    public static function factory($uri, $options)
+    public static function factory($uri, $options = array())
     {
-        return new Adapter\FileSystem($opitons);
-    }
-
-    public static function _resolveUri($uri)
-    {
-
+        $options['path'] = $uri;
+        return new Adapter\FileSystem($options);
     }
 }
