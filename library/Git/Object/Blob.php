@@ -11,7 +11,8 @@ class Blob
 
     public function __construct($hash, $data)
     {
-        $this->_hash = $hash;
+        parent::__construct($hash, $rawContent);
+
         $this->_content = $data;
     }
 
@@ -22,10 +23,11 @@ class Blob
 
     public function serialize()
     {
-        return self::BLOB . ' ' . strlen($this->_content) . "\0" . $this->_content;
+        return self::BLOB . ' ' . strlen($this->_content) . "\0" . $this->__toString();
     }
 
     public function unserialize($serialized)
     {
+        $this->_content = substr($serialized, strpos($serialized, "\0"));
     }
 }

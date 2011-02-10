@@ -19,5 +19,8 @@ abstract class Object
 
     protected $_hash = null;
 
-    abstract public function __construct($hash, $rawContent);
+    public function __construct($hash, $rawContent)
+    {
+        $this->_hash = $hash;
+    }
 }

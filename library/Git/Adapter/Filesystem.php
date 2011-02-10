@@ -4,7 +4,7 @@ namespace Git\Adapter;
 
 use Git;
 
-class FileSystem
+class Filesystem
     extends Git\AdapterAbstract
 {
     /**

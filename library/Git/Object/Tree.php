@@ -19,7 +19,8 @@ class Tree
 
     protected $_message = null;
 
-    public function __construct($data)
+    public function __construct($hash, $rawContent)
     {
+        parent::__construct($hash, $rawContent);
     }
 }
