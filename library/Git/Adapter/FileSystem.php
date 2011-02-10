@@ -28,6 +28,13 @@ class FileSystem
     private $_packIndex = array();
 
     /**
+     * The pack file offsets
+     *
+     * @var array
+     */
+    private $_packOffsets = array();
+
+    /**
      * The branch list
      *
      * @var array
@@ -115,7 +122,7 @@ class FileSystem
                     continue;
                 }
 
-                $this->_indexPackFile($file->getPathname());
+                $this->_indexPackFile($file);
             }
         } catch (\UnexpectedValueException $e) {
             throw new Exception\RuntimeException(
@@ -125,7 +132,7 @@ class FileSystem
         try {
             $iterator = new \FilesystemIterator($this->_repositoryPath . '/refs/heads');
             foreach ($iterator as $file) {
-                $this->_branches[$file->getFilename()] = file($file->getPathname(), FILE_IGNORE_NEW_LINES);;
+                $this->_branches[$file->getFilename()] = trim(file_get_contents($file->getPathname()));
             }
         } catch (\UnexpectedValueException $e) {
             throw new Exception\RuntimeException(
@@ -135,7 +142,7 @@ class FileSystem
         try {
             $iterator = new \FilesystemIterator($this->_repositoryPath . '/refs/tags');
             foreach ($iterator as $file) {
-                $this->_branches[$file->getFilename()] = file($file->getPathname(), FILE_IGNORE_NEW_LINES);;
+                $this->_tags[$file->getFilename()] = trim(file_get_contents($file->getPathname()));
             }
         } catch (\UnexpectedValueException $e) {
             throw new Exception\RuntimeException(
@@ -148,39 +155,43 @@ class FileSystem
      */
     public function getHead()
     {
+        // TODO
     }
 
     /**
      * @param string $branch
-     * @return Git\Object\Commit
+     * @return Git\Branch
      */
     public function getBranch($branch)
     {
-        if (!isset($this->_branches[(string) $branch])) {
+        $branch = (string) $branch;
+        var_dump($this->_branches);
+        if (!isset($this->_branches[$branch])) {
             throw new Exception\InvalidArgumentException("No such branch '{$branch}'.");
         }
 
         try {
-            return $this->getCommit($this->_branches[(string) $branch]);
+            return new Git\Branch($branch, $this->getCommit($this->_branches[$branch]));
         } catch (Exception\RuntimeException $e) {
-            throw new Exception\RuntimeException("No such branch '{$branch}'");
+            throw new Exception\RuntimeException("No such branch '{$branch}'", null, $e);
         }
     }
 
     /**
-     * @param string $branch
-     * @return Git\Object\Commit
+     * @param string $tag
+     * @return Git\Tag
      */
     public function getTag($tag)
     {
-        if (!isset($this->_tags[(string) $branch])) {
+        $tag = (string) $tag;
+        if (!isset($this->_tags[$tag])) {
             throw new Exception\InvalidArgumentException("No such tag '{$tag}'.");
         }
 
         try {
-            return $this->getCommit($this->_tags[(string) $branch]);
+            return new Git\Tag($tag, $this->getCommit($this->_tags[$branch]));
         } catch (Exception\RuntimeException $e) {
-            throw new Exception\RuntimeException("No such tag '{$tag}'");
+            throw new Exception\RuntimeException("No such tag '{$tag}'", null, $e);
         }
     }
 
@@ -190,58 +201,183 @@ class FileSystem
      */
     public function getCommit($commit)
     {
-        if (isset($this->_commits[(string) $commit])) {
-            return $this->_commits[(string) $commit];
+        $commit = (string) $commit;
+        if (isset($this->_commits[$commit])) {
+            return $this->_commits[$commit];
         }
 
         try {
-            $this->_commits[(string) $commit] = new Git\Object\Commit($this->_readObject($commit));
-            return $this->_commits[(string) $commit];
+            $object = $this->getObject($commit);
+            if (!$object instanceof Git\Object\Commit) {
+                throw new Exception\RuntimeException("Hash '{$commit}' is not a commit.");
+            }
+            $this->_commits[$commit] = $object;
+
+            return $this->_commits[$commit];
         } catch (Exception\RuntimeException $e) {
-            throw new Exception\RuntimeException("No such commit '{$commit}'");
+            throw new Exception\RuntimeException("No such commit '{$commit}'", null, $e);
         }
     }
 
-    private function _readObject($hash)
+    /**
+     * @param string $tree
+     * @return Git\Object\Tree
+     */
+    public function getTree($tree)
     {
+        $tree = (string) $tree;
+        if (isset($this->_trees[$tree])) {
+            return $this->_trees[$tree];
+        }
+
+        try {
+            $object = $this->getObject($tree);
+            if (!$object instanceof Git\Object\Tree) {
+                throw new Exception\RuntimeException("Hash '{$tree}' is not a tree.");
+            }
+            $this->_trees[$tree] = $object;
+
+            return $this->_trees[$tree];
+        } catch (Exception\RuntimeException $e) {
+            throw new Exception\RuntimeException("No such tree '{$tree}'", null, $e);
+        }
+    }
+
+    /**
+     * @param string $blob
+     * @return Git\Object\Blob
+     */
+    public function getBlob($blob)
+    {
+        $blob = (string) $blob;
+        if (isset($this->_blobs[$blob])) {
+            return $this->_blobs[$blob];
+        }
+
+        try {
+            $object = $this->getObject($blob);
+            if (!$object instanceof Git\Object\Blob) {
+                throw new Exception\RuntimeException("Hash '{$blob}' is not a blob.");
+            }
+            $this->_blobs[$blob] = $object;
+
+            return $this->_blobs[$blob];
+        } catch (Exception\RuntimeException $e) {
+            throw new Exception\RuntimeException("No such blob '{$blob}'", null, $e);
+        }
+    }
+
+    public function getObject($hash)
+    {
+        $hash = (string) $hash;
         $path = $this->_repositoryPath . "/objects/{$hash[0]}{$hash[1]}/" . substr($hash, 2);
 
         if (file_exists($path)) {
-            return gzuncompress(file_get_contents($path));
+            $raw = gzuncompress(file_get_contents($path));
+
+            $type = substr($raw, 0, strpos($raw, ' '));
+            $offset = strpos($raw, "\0") + 1;
+            switch ($type) {
+            case Git\Object::BLOB:
+                return new Git\Object\Blob($hash, substr($raw, $offset));
+                break;
+
+            case Git\Object::TREE:
+                return new Git\Object\Tree($hash, substr($raw, $offset));
+                break;
+
+            case Git\Object::COMMIT:
+                return new Git\Object\Commit($hash, substr($raw, $offset));
+                break;
+
+            default:
+                throw new Exception\RuntimeException("Invalid object type for '{$hash}'");
+            }
+        }
+
+        if (isset($this->_packIndex[$hash])) {
+            $file = $this->_packIndex[$hash];
+            $offset = $this->_packOffsets[$file][$hash];
+
+            $hashList = array_keys($this->_packOffsets[$file]);
+            $index = array_search($hash, $hashList);
+            if ((count($hashList) - 1) == $index) {
+                $length = filesize($file) - $offset;
+            } else {
+                $length = $this->_packOffsets[$file][$hashList[$index + 1]] - $offset;
+            }
+
+            if (!$pack = fopen($file, 'rb')) {
+                throw new Exception\RuntimeException("Could not open pack file '{$file}'");
+            }
+            flock($pack, LOCK_SH);
+
+            if (($toc = fread($pack, 4)) === false) {
+                throw new Exception\RuntimeException("Could not read pack file '{$file}'");
+            }
+
+            if ($toc !== 'PACK') {
+                flock($pack, LOCK_UN);
+                fclose($pack);
+
+                throw new Exception\RuntimeException("Invalid pack format for file '{$file}'");
+            }
+            fseek($pack, $offset, SEEK_SET);
+
+            $char = ord(fgetc($pack));
+            $type = ($char >> 4) & 0x07;
+            $size = $char & 0x0F;
+            for ($i = 4; $char & 0x80; $i += 7) {
+                $char = ord(fgetc($pack));
+                $size |= ($char << $i);
+            }
+
+            $rawContent = fread($pack, $compressedLength);
+
+            flock($pack, LOCK_UN);
+            fclose($pack);
+
+            switch ($type) {
+            case Git\Object::OBJ_BLOB:
+                return new Git\Object\Blob($hash, gzuncompress($rawContent));
+                break;
+
+            case Git\Object::OBJ_TREE:
+                return new Git\Object\Tree($hash, gzuncompress($rawContent));
+                break;
+
+            case Git\Object::OBJ_COMMIT:
+                return new Git\Object\Commit($hash, gzuncompress($rawContent));
+                break;
+
+            case Git\Object::OBJ_TAG:
+                return new Git\Object\Tag($hash, gzuncompress($rawContent));
+                break;
+
+            case Git\Object::OBJ_OFS_DELTA:
+            case Git\Object::OBJ_REF_DELTA:
+                throw new Exception\RuntimeException("OBJ_OFS_DELTA and OBJ_REF_DELTA not implemented.");
+                break;
+
+            default:
+                throw new Exception\RuntimeException("Invalid object type for '{$hash}'");
+                break;
+            }
         }
 
         throw new Exception\RuntimeException("Could not find object '{$hash}'");
     }
 
-    private function _parsePackFile($file)
+    /**
+     *
+     */
+    private function _indexPackFile(\SplFileInfo $file)
     {
-        if (!$index = @fopen($file, 'rb')) {
+        if (!$index = fopen($file->getPathname(), 'rb')) {
             throw new Exception\RuntimeException("Could not open pack file '{$file}'");
         }
-        flock($index, LOCK_SH);
 
-        if (($toc = fread($index, 4)) === false) {
-            throw new Exception\RuntimeException("Could not read pack file '{$file}'");
-        }
-
-        if ($toc === 'PACK') {
-            $version = current(unpack('N', fread($index, 4)));
-            $objectsCount = current(unpack('N', fread($index, 4)));
-
-            // TODO: parse .pack file
-        }
-
-        flock($index, LOCK_UN);
-        fclose($index);
-
-        return null;
-    }
-
-    private function _indexPackFile($file)
-    {
-        if (!$index = @fopen($file, 'rb')) {
-            throw new Exception\RuntimeException("Could not open pack file '{$file}'");
-        }
+        $packFile = "{$file->getPath()}/{$file->getBasename('.idx')}.pack";
 
         flock($index, LOCK_SH);
         if (($toc = fread($index, 4)) !== false) {
@@ -265,10 +401,8 @@ class FileSystem
                     $tmp = unpack('N', fread($index, 4));
                     $offset = current($tmp);
 
-                    $this->_packIndex[$hashes[$i]] = array(
-                        'file'   => $file,
-                        'offset' => $offset
-                        );
+                    $this->_packOffsets[$packFile][$hashes[$i]] = $offset;
+                    $this->_packIndex[$hashes[$i]] = "{$file->getPath()}/{$file->getBasename('.idx')}.pack";
                 }
             } else {
                 // skip the fanout
@@ -284,15 +418,15 @@ class FileSystem
                     $tmp = unpack('H40', fread($index, 20));
                     $hash = current($tmp);
 
-                    $this->_packIndex[$hash] = array(
-                        'file'   => $file,
-                        'offset' => $offset
-                        );
+                    $this->_packOffsets[$packFile][$hash] = $offset;
+                    $this->_packIndex[$hash] = "{$file->getPath()}/{$file->getBasename('.idx')}.pack";
                 }
             }
         }
         flock($index, LOCK_UN);
         fclose($index);
+
+        asort($this->_packOffsets[$packFile]);
 
         return array();
     }

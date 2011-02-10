@@ -4,7 +4,7 @@ namespace Git\Object;
 
 use Git;
 
-class Commit
+class Tree
     extends Git\Object
 {
     protected $_tree = null;
@@ -19,16 +19,7 @@ class Commit
 
     protected $_message = null;
 
-    public function __construct($hash, $raw)
-    {
-        $this->_hash = $hash;
-    }
-
-    public function serialize()
-    {
-    }
-
-    public function unserialize($serialized)
+    public function __construct($data)
     {
     }
 }

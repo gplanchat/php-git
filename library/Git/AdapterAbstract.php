@@ -3,7 +3,6 @@
 namespace Git;
 
 abstract class AdapterAbstract
-    extends \FilesystemIterator
 {
     protected $_options = array();
 

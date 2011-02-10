@@ -1,11 +1,11 @@
 <?php
 
-namespace Git\Adapter;
+namespace Git\Adapter\Exception;
 
 use Git;
 
 class InvalidArgumentException
     extends \InvalidArgumentException
-    implements Exception
+    implements Git\Exception
 {
 }

@@ -1,11 +1,11 @@
 <?php
 
-namespace Git\Adapter;
+namespace Git\Adapter\Exception;
 
 use Git;
 
 class RuntimeException
     extends \RuntimeException
-    implements Exception
+    implements Git\Exception
 {
 }
